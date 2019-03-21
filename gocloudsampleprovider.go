@@ -60,7 +60,6 @@ import (
 	"gocloud.dev/blob"
 	"gocloud.dev/blob/driver"
 	"gocloud.dev/gcerrors"
-	"gocloud.dev/internal/escape"
 )
 
 const defaultPageSize = 1000
@@ -132,9 +131,70 @@ func (b *bucket) Close() error {
 	return nil
 }
 
+func HexEscape(s string, shouldEscape func(s []rune, i int) bool) string {
+	// Do a first pass to see which runes (if any) need escaping.
+	runes := []rune(s)
+	var toEscape []int
+	for i := range runes {
+		if shouldEscape(runes, i) {
+			toEscape = append(toEscape, i)
+		}
+	}
+	if len(toEscape) == 0 {
+		return s
+	}
+	// Each escaped rune turns into at most 14 runes ("__0x7fffffff__"),
+	// so allocate an extra 13 for each. We'll reslice at the end
+	// if we didn't end up using them.
+	escaped := make([]rune, len(runes)+13*len(toEscape))
+	n := 0 // current index into toEscape
+	j := 0 // current index into escaped
+	for i, r := range runes {
+		if n < len(toEscape) && i == toEscape[n] {
+			// We were asked to escape this rune.
+			for _, x := range fmt.Sprintf("__%#x__", r) {
+				escaped[j] = x
+				j++
+			}
+			n++
+		} else {
+			escaped[j] = r
+			j++
+		}
+	}
+	return string(escaped[0:j])
+}
+
+// HexUnescape reverses HexEscape.
+func HexUnescape(s string) string {
+	var unescaped []rune
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		if ok, newR, newI := unescape(runes, i); ok {
+			// We unescaped some runes starting at i, resulting in the
+			// unescaped rune newR. The last rune used was newI.
+			if unescaped == nil {
+				// This is the first rune we've encountered that
+				// needed unescaping. Allocate a buffer and copy any
+				// previous runes.
+				unescaped = make([]rune, i)
+				copy(unescaped, runes)
+			}
+			unescaped = append(unescaped, newR)
+			i = newI
+		} else if unescaped != nil {
+			unescaped = append(unescaped, runes[i])
+		}
+	}
+	if unescaped == nil {
+		return s
+	}
+	return string(unescaped)
+}
+
 // escapeKey does all required escaping for UTF-8 strings to work the filesystem.
 func escapeKey(s string) string {
-	s = escape.HexEscape(s, func(r []rune, i int) bool {
+	s = HexEscape(s, func(r []rune, i int) bool {
 		c := r[i]
 		switch {
 		case c < 32:
@@ -171,7 +231,7 @@ func unescapeKey(s string) string {
 	if os.PathSeparator != '/' {
 		s = strings.Replace(s, string(os.PathSeparator), "/", -1)
 	}
-	s = escape.HexUnescape(s)
+	s = HexUnescape(s)
 	return s
 }
 
