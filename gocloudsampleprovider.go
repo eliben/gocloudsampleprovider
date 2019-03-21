@@ -165,6 +165,45 @@ func HexEscape(s string, shouldEscape func(s []rune, i int) bool) string {
 	return string(escaped[0:j])
 }
 
+func unescape(r []rune, i int) (bool, rune, int) {
+	// Look for "__0x".
+	if r[i] != '_' {
+		return false, 0, 0
+	}
+	i++
+	if i >= len(r) || r[i] != '_' {
+		return false, 0, 0
+	}
+	i++
+	if i >= len(r) || r[i] != '0' {
+		return false, 0, 0
+	}
+	i++
+	if i >= len(r) || r[i] != 'x' {
+		return false, 0, 0
+	}
+	i++
+	// Capture the digits until the next "_" (if any).
+	var hexdigits []rune
+	for ; i < len(r) && r[i] != '_'; i++ {
+		hexdigits = append(hexdigits, r[i])
+	}
+	// Look for the trailing "__".
+	if i >= len(r) || r[i] != '_' {
+		return false, 0, 0
+	}
+	i++
+	if i >= len(r) || r[i] != '_' {
+		return false, 0, 0
+	}
+	// Parse the hex digits into an int32.
+	retval, err := strconv.ParseInt(string(hexdigits), 16, 32)
+	if err != nil {
+		return false, 0, 0
+	}
+	return true, rune(retval), i
+}
+
 // HexUnescape reverses HexEscape.
 func HexUnescape(s string) string {
 	var unescaped []rune
