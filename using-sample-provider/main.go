@@ -1,3 +1,4 @@
+// This sample shows how to use the custom out-of-tree blob provider.
 package main
 
 import (
@@ -12,6 +13,8 @@ import (
 func main() {
 	ctx := context.Background()
 
+	// gocloudsampleprovider registers the gcspfile:// route for blob handling,
+	// so we can pass that to blob.OpenBucket directly.
 	b, err := blob.OpenBucket(ctx, "gcspfile://tempfile1")
 	if err != nil {
 		log.Fatal(err)
